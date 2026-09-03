@@ -1,0 +1,37 @@
+# LiteLLM Gateway config — the concrete implementation of the "LLM Gateway" component
+# in the master plan. Model names on the left (model_name) are what Hermes and every
+# future agent call — they never see the provider-specific name on the right, which is
+# the whole point: swap providers here without touching agent code.
+#
+# Cost tiers follow the master plan's routing philosophy (section 9 of the architecture
+# doc): cheapest model that can reliably do the job, escalate only when the task needs it.
+# Week 1 only needs ONE working model end-to-end — add the rest as you get keys/need them.
+
+model_list:
+  # --- cheap tier: routine tasks, summarization, classification, daily-brief generation ---
+  - model_name: cheap
+    litellm_params:
+      model: claude-haiku-4-5-20251001 # swap for whatever your current cheap Anthropic/OpenAI model is
+      api_key: os.environ/ANTHROPIC_API_KEY
+
+  # --- premium tier: planning, architecture, anything where quality matters ---
+  - model_name: premium
+    litellm_params:
+      model: claude-sonnet-4-5-20250929
+      api_key: os.environ/ANTHROPIC_API_KEY
+
+  # --- second provider, so "model-agnostic" is proven from day one, not assumed ---
+  - model_name: premium-fallback
+    litellm_params:
+      model: gpt-4o
+      api_key: os.environ/OPENAI_API_KEY
+
+router_settings:
+  # if the primary premium model fails, fall back rather than hard-erroring —
+  # this is the "fallback handling" line item from the gateway contract
+  fallbacks: [{ "premium": ["premium-fallback"] }]
+
+general_settings:
+  master_key: os.environ/LITELLM_MASTER_KEY
+  # spend tracking is on by default when a master_key is set — LiteLLM logs cost per
+  # request against a local SQLite db unless you point it elsewhere later

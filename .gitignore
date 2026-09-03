@@ -1,0 +1,23 @@
+# Secrets — never commit real keys
+.env
+*.key
+
+# Python
+__pycache__/
+*.pyc
+.venv/
+venv/
+
+# Node (future UI/automation work)
+node_modules/
+
+# macOS
+.DS_Store
+
+# Editors
+.vscode/
+.idea/
+
+# Logs / local runtime state
+*.log
+.hermes-local/
