@@ -28,11 +28,13 @@ Full reasoning and living decisions: `Jarvis Master Plan.md` in the Obsidian vau
               │ mcp/        │                   │               │
               └──────┬──────┘                   └──────┬───────┘
                      ▼                                  │
-          ┌──────────────────────┐             ┌────────┼────────┐
-          │   PERSONAL MEMORY     │             ▼        ▼        ▼
-          │   memory/              │          cheap  premium  premium-
-          │   Obsidian + pgvector  │                        fallback
-          └──────────────────────┘
+          ┌──────────────────────┐        ┌──────────────┼───────────────┐
+          │   PERSONAL MEMORY     │        ▼              ▼               ▼
+          │   memory/              │     cheap         premium        premium-
+          │   Obsidian + pgvector  │  (free-first,   frontier (both    fallback
+          └──────────────────────┘   waterfall to    on AWS Bedrock)
+                                       AWS Bedrock's
+                                       Nova Micro)
 ```
 
 ## Current decisions (mirrors the vault decision log)
@@ -40,7 +42,7 @@ Full reasoning and living decisions: `Jarvis Master Plan.md` in the Obsidian vau
 | Layer | Choice | Status |
 |---|---|---|
 | Agent runtime | Hermes Agent (Nous Research) | In progress — `hermes/` |
-| LLM Gateway | LiteLLM | In progress — `gateway/` |
+| LLM Gateway | LiteLLM, `frontier`/`premium`/`cheap-reliable`/`bedrock-nova-micro` via AWS Bedrock (IAM auth); `premium-fallback` deliberately stays on direct OpenAI (6.13) | In progress — `gateway/` |
 | Memory (structured + semantic) | Postgres + pgvector | Not started — `memory/` |
 | Memory (knowledge) | Obsidian vault | External, already exists |
 | Tool/data integration | MCP | Not started — `mcp/` |

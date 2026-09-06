@@ -7,13 +7,14 @@ This repo is the code side of the JARVIS project. The living plan — vision, ag
 ## Structure
 
 ```
-gateway/      LLM Gateway (LiteLLM) — model routing, cost tracking. Week 1.
+gateway/      LLM Gateway (LiteLLM) — model routing, cost tracking, token optimiser. Week 1.
 hermes/       Hermes Agent config — the agent runtime. Week 1.
 agents/       Domain agents (learning, news, finance, ...). Week 2+.
 mcp/          MCP tool/data integrations (Obsidian, filesystem, ...). Phase 2+.
 automation/   n8n workflows and scheduling. Phase 2+.
 memory/       Postgres + pgvector schema (state + semantic memory). Phase 2+.
-docs/         Architecture snapshot, LLM Gateway contract, runbooks.
+hud/          JARVIS UI — minimal HUD folds into the daily brief (Phase 1); real dashboard Phase 6.
+docs/         Architecture snapshot, LLM Gateway contract, model routing, cost/token HUD, runbooks.
 ```
 
 Folders beyond `gateway/` and `hermes/` are placeholders for now — each has a short README saying what will land there and when, so the shape of the system is visible from day one without pretending it's all built.

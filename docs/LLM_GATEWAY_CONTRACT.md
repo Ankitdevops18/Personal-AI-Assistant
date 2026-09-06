@@ -8,11 +8,16 @@ Standard OpenAI chat-completions schema (`POST /v1/chat/completions`), since tha
 
 ## Model selection
 
-Callers ask for a **tier alias**, never a provider-specific model string:
+Callers ask for a **tier alias**, never a provider-specific model string. Full tier list and per-agent assignment: `docs/MODEL_ROUTING.md`. Summary:
 
-- `cheap` — routine tasks: summarization, classification, extraction, daily-brief generation, simple Q&A.
-- `premium` — planning, architecture-level reasoning, anything where quality matters more than cost.
-- `premium-fallback` — not called directly; the gateway routes here automatically if `premium` fails.
+- `frontier` — highest-stakes, hardest reasoning (Trading Agent only). AWS Bedrock.
+- `premium` — planning, architecture-level reasoning, real money/health stakes. AWS Bedrock.
+- `mid` — cheap-but-capable default; use when a task doesn't clearly need `premium` but free-tier rate limits would be annoying.
+- `cheap` — routine, high-volume, low-stakes tasks. Resolves to a free provider first (Groq) and only escalates through progressively less-cheap fallbacks if that's unavailable — see `docs/MODEL_ROUTING.md` for the full chain.
+- `cheap-reliable` — not called directly; the gateway routes here as `cheap`'s last resort, once every free option and `mid` have failed. AWS Bedrock (6.13).
+- `free-groq` / `free-cerebras` / `free-openrouter` / `bedrock-nova-micro` — high-volume, low-stakes, rate-limited-but-free (or, for `bedrock-nova-micro`, fractions-of-a-cent-but-not-free) — never for anything touching personal data, see privacy note in `docs/MODEL_ROUTING.md`.
+- `experimental` — manual-only, never called by agent code directly.
+- `premium-fallback` — not called directly; the gateway routes here automatically if `premium` fails. Direct OpenAI, deliberately not Bedrock (6.13) — see `docs/MODEL_ROUTING.md`.
 
 Adding a tier (e.g. a `local` tier once local inference is worth running) means adding an entry to `gateway/config.yaml` — no agent code changes.
 

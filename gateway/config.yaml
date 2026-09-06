@@ -3,35 +3,195 @@
 # future agent call — they never see the provider-specific name on the right, which is
 # the whole point: swap providers here without touching agent code.
 #
-# Cost tiers follow the master plan's routing philosophy (section 9 of the architecture
-# doc): cheapest model that can reliably do the job, escalate only when the task needs it.
-# Week 1 only needs ONE working model end-to-end — add the rest as you get keys/need them.
+# Tiers and per-agent assignment below follow the master plan's section 6.8, worked out
+# in full in the vault note "LLM Cost & Model Routing — Reference Notes" — read that for
+# the reasoning (pricing, benchmarks, why each agent gets the tier it gets). Section 6.12
+# covers frontier/premium moving to AWS Bedrock, Experiential Labs dropped, and a real
+# bug in the `cheap` waterfall's ordering fixed. Section 6.13 covers cheap-reliable
+# (Haiku) also moving to Bedrock, and the decision to keep premium-fallback on direct
+# OpenAI rather than Bedrock's OpenAI models (different auth mechanism, no portal saved).
+#
+# Four portals now manage every key here: Groq, Cerebras, OpenRouter, AWS (one set of
+# creds covers frontier/premium/cheap-reliable/bedrock-nova-micro) — plus OpenAI, kept
+# deliberately separate as premium-fallback's AWS-independent reliability path.
+#
+# Week 1 only needs `cheap` and `premium` working end-to-end. Everything else here is
+# real but doesn't need to be filled in (i.e. keys added) until the agent that uses it
+# gets built.
 
 model_list:
-  # --- cheap tier: routine tasks, summarization, classification, daily-brief generation ---
+  # --- Tier S/A: stakes-appropriate. Real money, real reasoning, the orchestrator.
+  # Both now on AWS Bedrock (master plan 6.12) — no pricing markup vs. calling Anthropic
+  # direct, IAM auth instead of another bearer key in .env. No `api_key` param: Bedrock
+  # auth comes from the standard AWS credential chain (env vars, an AWS profile, or an
+  # instance role once this runs on EC2/ECS) — passing `api_key` here breaks that chain.
+  - model_name: frontier          # Trading Agent only (Phase 7) — highest stakes, hardest reasoning
+    litellm_params:
+      model: bedrock/anthropic.claude-opus-4-1-20250805-v1:0   # verify exact model ID in the Bedrock console — these differ slightly from direct-API strings and change often
+      aws_region_name: os.environ/AWS_REGION_NAME
+
+  - model_name: premium            # JARVIS Core, Finance/Investment, Health, technical Learning
+    litellm_params:
+      model: bedrock/anthropic.claude-sonnet-4-5-20250929-v1:0   # verify exact model ID in the Bedrock console
+      aws_region_name: os.environ/AWS_REGION_NAME
+
+  # --- Tier A/B: the "near-default middle" — cheap enough to default to, capable enough
+  # to be a real fallback for premium-tier work. Nemotron Super benchmarks close to or
+  # above Llama 3.1 405B at a fraction of the cost when hosted cheaply (not via NVIDIA's
+  # own NIM, which is ~10x pricier for the same model) — hence routing it through
+  # OpenRouter here rather than build.nvidia.com. Not on Bedrock — NVIDIA Nemotron isn't
+  # one of Bedrock's hosted model families.
+  - model_name: mid
+    litellm_params:
+      model: openrouter/nvidia/nemotron-3-super   # confirm exact slug on openrouter.ai/models
+      api_key: os.environ/OPENROUTER_API_KEY
+
+  # --- Tier C: free, rate-limited, high-volume/low-stakes work (News, Life Planner,
+  # English/personality practice). `cheap` (below) IS this tier's entry point — see the
+  # router_settings.fallbacks note for why that matters. Rate limits here are corrected
+  # as of master plan 6.12 after checking each provider's own docs directly — published
+  # figures vary a lot across third-party write-ups, so re-verify on each provider's own
+  # live limits page before treating any of this as exact.
+  - model_name: free-groq
+    litellm_params:
+      model: groq/llama-3.3-70b-versatile
+      api_key: os.environ/GROQ_API_KEY
+      # ~30 RPM / 6K TPM per Groq's own docs. Daily request cap is inconsistent across
+      # sources (1,000 vs 14,400 RPD both cited) — check console.groq.com/settings/limits.
+
+  - model_name: free-cerebras
+    litellm_params:
+      model: cerebras/gpt-oss-120b   # CHANGED from llama-3.3-70b (6.12): that model wasn't confirmed on Cerebras' free tier; gpt-oss-120b and qwen-3.8-27b are, per Cerebras' own docs
+      api_key: os.environ/CEREBRAS_API_KEY
+      # 5 RPM / 30K TPM (uncached) / 1M TPD per Cerebras' own docs — meaningfully more
+      # restrictive than earlier notes here assumed (30 RPM/60K TPM was wrong).
+
+  - model_name: free-openrouter
+    litellm_params:
+      model: openrouter/meta-llama/llama-3.3-70b-instruct:free
+      api_key: os.environ/OPENROUTER_API_KEY
+      # 20 RPM / 50 RPD with no credits purchased; 20 RPM / 1,000 RPD once $10+ in
+      # credits has been bought (per OpenRouter's own docs) — worth funding that $10
+      # once, it's a 20x jump in daily headroom for a one-time cost.
+      #
+      # Privacy (checked directly, 6.13): OpenRouter doesn't log prompts/completions by
+      # default and excludes logging/unconfirmed providers from routing unless you opt in
+      # (off by default) — but this specific free endpoint has 13 possible backend hosts
+      # (DeepInfra, Together, Novita, SambaNova, Groq, Google Vertex, etc.), so which one
+      # serves a request varies. Fine for routine stuff; still don't send finance/health/
+      # vault content here. Full reasoning: docs/MODEL_ROUTING.md.
+
+  # --- Replaces the old Experiential Labs free rung (dropped, 6.12): a stable, cheap,
+  # no-promotional-pricing-cliff-risk rung on AWS Bedrock. Not free, but $0.035/$0.14 per
+  # MTok is close enough to it that it's a safe, permanent price to fall through to —
+  # unlike Experiential's promo models, this price doesn't disappear. No `api_key`: same
+  # AWS credential chain as frontier/premium above.
+  - model_name: bedrock-nova-micro
+    litellm_params:
+      model: bedrock/amazon.nova-micro-v1:0   # verify exact model ID in the Bedrock console
+      aws_region_name: os.environ/AWS_REGION_NAME
+
+  # --- cheap: THE ENTRY POINT for the cost-minimization waterfall — deliberately the
+  # SAME deployment as free-groq (see router_settings.fallbacks below for why). Agents
+  # call `cheap`; the gateway decides underneath it how far to escalate before paying.
   - model_name: cheap
     litellm_params:
-      model: claude-haiku-4-5-20251001 # swap for whatever your current cheap Anthropic/OpenAI model is
-      api_key: os.environ/ANTHROPIC_API_KEY
+      model: groq/llama-3.3-70b-versatile
+      api_key: os.environ/GROQ_API_KEY
 
-  # --- premium tier: planning, architecture, anything where quality matters ---
-  - model_name: premium
+  # --- Renamed from the old `cheap` (6.12): this was Haiku pretending to be the free
+  # tier's entry point, which meant every `cheap` call paid Haiku's price FIRST and only
+  # touched free providers during an Anthropic outage — backwards from the whole point
+  # of a cost-minimization waterfall. Now correctly positioned as the LAST resort in
+  # `cheap`'s fallback chain, below, once every free option and `mid` have been tried.
+  # Moved to AWS Bedrock (6.13) — same mechanism as frontier/premium above: no pricing
+  # markup vs. direct Anthropic, no `api_key` (AWS credential chain), one fewer portal
+  # (ANTHROPIC_API_KEY is now unused anywhere in this config).
+  - model_name: cheap-reliable
     litellm_params:
-      model: claude-sonnet-4-5-20250929
-      api_key: os.environ/ANTHROPIC_API_KEY
+      model: bedrock/anthropic.claude-haiku-4-5-20251001-v1:0   # verify exact model ID in the Bedrock console
+      aws_region_name: os.environ/AWS_REGION_NAME
 
-  # --- second provider, so "model-agnostic" is proven from day one, not assumed ---
+  # --- second Anthropic-independent provider, so "model-agnostic" is proven day one ---
+  # DECIDED, staying put (6.13): OpenAI models (GPT-5.4/5.5, not GPT-4o — that's not
+  # offered) did go GA on AWS Bedrock in 2026, confirmed via AWS's own docs — but they
+  # don't use the same mechanism as Claude/Nova on Bedrock above: a separate
+  # `bedrock-mantle` endpoint + OpenAI Responses API + a Bedrock-issued bearer token, NOT
+  # the IAM credential chain, and region-locked (GPT-5.5: us-east-2 only). Moving this
+  # here would trade one credential (OPENAI_API_KEY) for another (a Bedrock API key)
+  # rather than actually removing a portal, and would fold the last non-AWS reliability
+  # fallback into the same cloud as everything else. Deliberately left on direct OpenAI —
+  # this is the one fallback that survives an AWS-wide outage. See master plan 6.13.
   - model_name: premium-fallback
     litellm_params:
-      model: gpt-4o
+      model: gpt-4o   # flagged as dated (late 2026) — worth bumping to a current OpenAI model at some point, independent of the Bedrock question
       api_key: os.environ/OPENAI_API_KEY
 
+  # --- experimental: broad open-model catalog via OpenRouter, for trying/comparing
+  # models. NOT wired into any fallback chain on purpose — several models in this wider
+  # catalog (and Gemini-hosted ones reachable through it) train on free-tier inputs/
+  # outputs by provider policy, unlike free-openrouter's specific Llama endpoint below
+  # (checked directly, 6.13 — see docs/MODEL_ROUTING.md's privacy section). A bad fit for
+  # anything touching your personal data. Call this deliberately (`/model experimental` in
+  # Hermes), never let it fire automatically.
+  - model_name: experimental
+    litellm_params:
+      model: openrouter/qwen/qwen3.8-flash   # swap freely — same alias either way
+      api_key: os.environ/OPENROUTER_API_KEY
+
 router_settings:
-  # if the primary premium model fails, fall back rather than hard-erroring —
-  # this is the "fallback handling" line item from the gateway contract
-  fallbacks: [{ "premium": ["premium-fallback"] }]
+  # Two different kinds of fallback, don't conflate them:
+  # 1. Reliability fallback (premium, frontier): if the primary provider errors/is down,
+  #    retry on a different provider at roughly the same capability tier.
+  # 2. Cost-minimization waterfall (cheap): `cheap` itself resolves to the FREE Groq
+  #    deployment (see model_list above) — its fallback chain below is what actually
+  #    implements "try every free option, then the cheapest paid option, before ever
+  #    touching a pricier one." Ordered by real per-token cost, cheapest first:
+  #    free-cerebras/free-openrouter ($0) -> bedrock-nova-micro ($0.035/$0.14) ->
+  #    mid/Nemotron ($0.085/$0.40) -> cheap-reliable/Haiku ($1/$5, last resort).
+  fallbacks:
+    - { "frontier": ["premium"] }
+    - { "premium": ["premium-fallback", "mid"] }
+    - { "cheap": ["free-cerebras", "free-openrouter", "bedrock-nova-micro", "mid", "cheap-reliable"] }
+    # Found while fixing the above (docs/MODEL_ROUTING.md claimed Career & Income's `mid`
+    # calls fall back through the free tiers, but no such chain was ever configured here —
+    # `mid` had no fallback at all. Added one: if OpenRouter/Nemotron itself errors, degrade
+    # to the free tiers rather than failing outright.
+    - { "mid": ["free-cerebras", "free-openrouter", "bedrock-nova-micro"] }
 
 general_settings:
   master_key: os.environ/LITELLM_MASTER_KEY
-  # spend tracking is on by default when a master_key is set — LiteLLM logs cost per
-  # request against a local SQLite db unless you point it elsewhere later
+  # Points spend/budget tracking at the SAME Postgres already planned for memory/pgvector
+  # (master plan 6.3) — one DB, not two. This isn't optional decoration: LiteLLM's budget
+  # enforcement (litellm_settings.max_budget below) requires Postgres, the default local
+  # SQLite doesn't support it. Commented out until that Postgres instance actually exists
+  # (Phase 2) — uncomment once DATABASE_URL is set in .env. Until then, spend still gets
+  # tracked locally (SQLite), just not budget-enforced.
+  # database_url: os.environ/DATABASE_URL
+
+# Token Optimiser + Cost/Usage HUD backend — master plan 6.9. Both entries below are
+# config-only, no code, on from Week 1.
+litellm_settings:
+  # Auto-injects `cache_control` breakpoints on the system prompt + trailing turn for
+  # Claude calls — no per-agent changes needed. This is section 6.8's "prompt caching,
+  # biggest lever" made concrete: a cached read is billed around 10% of a fresh input
+  # read (verify against current Anthropic pricing before relying on the exact number).
+  # 1h TTL instead of the 5-minute default, since JARVIS Core and Finance hit the same
+  # system prompt repeatedly across a day, not back-to-back.
+  #
+  # UNVERIFIED since frontier/premium moved to Bedrock (6.12): this flag's auto-injection
+  # was built and tested against direct Anthropic model strings — LiteLLM's own GitHub
+  # has open issues specifically about cache-control injection for Bedrock-hosted Claude,
+  # so don't assume this "just works" for bedrock/anthropic.* the same way. Smoke-test it
+  # in Week 1 (check for a cache-read line in the response, or in /spend/logs) — if it's
+  # not triggering, the fallback is `cache_control_injection_points` set explicitly on
+  # the frontier/premium model_list entries above (see docs.litellm.ai/docs/tutorials/prompt_caching).
+  enable_anthropic_prompt_caching: true
+  anthropic_prompt_caching_ttl: "1h"
+
+  # Hard proxy-wide ceiling, matching the $10-30/month estimate in 6.8 with headroom.
+  # Doesn't reduce tokens — it caps the damage if the optimiser or routing table has a
+  # bug. Requires general_settings.database_url above to actually be enforced; raise
+  # this once real usage data says the estimate was wrong.
+  max_budget: 30
+  budget_duration: "30d"

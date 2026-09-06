@@ -12,7 +12,9 @@ cp .env.example .env
 ```
 
 Open `.env` and fill in:
-- `ANTHROPIC_API_KEY` (and/or `OPENAI_API_KEY` if you want the fallback tier working too)
+- `GROQ_API_KEY` — free signup at console.groq.com, needed for `cheap` (which now IS the free tier's entry point, see `gateway/README.md`)
+- AWS Bedrock credentials (`AWS_ACCESS_KEY_ID`/`AWS_SECRET_ACCESS_KEY`/`AWS_REGION_NAME`, or an `AWS_PROFILE` if you'd rather use one) — needed for `premium`. One-time step before this works: enable "Model access" for Claude Sonnet 4.5 in the Bedrock console, for whatever region you set. Full detail: `gateway/README.md`.
+- `ANTHROPIC_API_KEY` (optional this week — only needed if you want `cheap-reliable`'s Haiku fallback working, not required for the Week 1 checkpoint)
 - `LITELLM_MASTER_KEY` — any random string, e.g. output of `openssl rand -hex 32`
 
 ## 2. Start the gateway (tab 1 — leave running)
