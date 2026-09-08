@@ -25,6 +25,22 @@ model_list:
   # direct, IAM auth instead of another bearer key in .env. No `api_key` param: Bedrock
   # auth comes from the standard AWS credential chain (env vars, an AWS profile, or an
   # instance role once this runs on EC2/ECS) — passing `api_key` here breaks that chain.
+  #
+  # TROUBLESHOOTING (6.15) — "BedrockException Invalid Authentication: The security token
+  # included in the request is invalid": AWS didn't recognize the credentials at all, not
+  # a permissions/model-access problem (that error reads differently — AccessDeniedException).
+  # Checked in order:
+  #  1. Trailing whitespace/newline on AWS_ACCESS_KEY_ID / AWS_SECRET_ACCESS_KEY in .env —
+  #     easy to introduce copy-pasting from the AWS console.
+  #  2. If these are TEMPORARY credentials (from `aws sso login`, IAM Identity Center, or
+  #     any STS AssumeRole flow) rather than a long-lived IAM user's access keys: they
+  #     need a THIRD variable, AWS_SESSION_TOKEN, or they're incomplete and read as
+  #     invalid. Not in .env.example before this fix — added below.
+  #  3. The access key itself may be deactivated/rotated/deleted in IAM — check the IAM
+  #     console directly.
+  #  4. Fastest isolation test if the AWS CLI is installed: export the same three (or
+  #     four) vars in a shell and run `aws sts get-caller-identity` — if THAT fails the
+  #     same way, it's the credentials, not LiteLLM or this config.
   - model_name: frontier          # Trading Agent only (Phase 7) — highest stakes, hardest reasoning
     litellm_params:
       model: bedrock/anthropic.claude-opus-4-1-20250805-v1:0   # verify exact model ID in the Bedrock console — these differ slightly from direct-API strings and change often
@@ -36,14 +52,19 @@ model_list:
       aws_region_name: os.environ/AWS_REGION_NAME
 
   # --- Tier A/B: the "near-default middle" — cheap enough to default to, capable enough
-  # to be a real fallback for premium-tier work. Nemotron Super benchmarks close to or
-  # above Llama 3.1 405B at a fraction of the cost when hosted cheaply (not via NVIDIA's
-  # own NIM, which is ~10x pricier for the same model) — hence routing it through
-  # OpenRouter here rather than build.nvidia.com. Not on Bedrock — NVIDIA Nemotron isn't
+  # to be a real fallback for premium-tier work. Not on Bedrock — NVIDIA Nemotron isn't
   # one of Bedrock's hosted model families.
+  #
+  # FIXED (6.15, live-tested): `nemotron-3-super` never existed as an OpenRouter slug —
+  # the "confirm exact slug" TODO here was never actually verified and the proxy 400'd on
+  # every real call. Confirmed via OpenRouter's own live model API: the real current model
+  # is nemotron-3.5-lightning ($0.08/$0.20 per MTok, 262K context) — smaller than what was
+  # assumed (3B active/30B total MoE vs. the imagined near-405B-class model), but real and
+  # working, which the old entry wasn't. Re-benchmark before assuming it's still the right
+  # default if `premium`-tier work starts leaning on `mid` heavily.
   - model_name: mid
     litellm_params:
-      model: openrouter/nvidia/nemotron-3-super   # confirm exact slug on openrouter.ai/models
+      model: openrouter/nvidia/nemotron-3.5-lightning
       api_key: os.environ/OPENROUTER_API_KEY
 
   # --- Tier C: free, rate-limited, high-volume/low-stakes work (News, Life Planner,
@@ -52,12 +73,16 @@ model_list:
   # as of master plan 6.12 after checking each provider's own docs directly — published
   # figures vary a lot across third-party write-ups, so re-verify on each provider's own
   # live limits page before treating any of this as exact.
+  # FIXED (6.15, live-tested): llama-3.3-70b-versatile has moved to Groq's Enterprise-only
+  # tier (confirmed via Groq's own model docs) and now 404s for a normal account. Groq's
+  # free-plan-eligible catalog currently centers on the OpenAI open-weight gpt-oss models
+  # instead — swapped to gpt-oss-120b. Re-check console.groq.com/settings/limits for this
+  # model's actual rate limits on your account; the old 30 RPM/6K TPM figure was measured
+  # against the now-dead model, not this one.
   - model_name: free-groq
     litellm_params:
-      model: groq/llama-3.3-70b-versatile
+      model: groq/openai/gpt-oss-120b
       api_key: os.environ/GROQ_API_KEY
-      # ~30 RPM / 6K TPM per Groq's own docs. Daily request cap is inconsistent across
-      # sources (1,000 vs 14,400 RPD both cited) — check console.groq.com/settings/limits.
 
   - model_name: free-cerebras
     litellm_params:
@@ -65,20 +90,33 @@ model_list:
       api_key: os.environ/CEREBRAS_API_KEY
       # 5 RPM / 30K TPM (uncached) / 1M TPD per Cerebras' own docs — meaningfully more
       # restrictive than earlier notes here assumed (30 RPM/60K TPM was wrong).
+      #
+      # LIVE ERROR (6.15): "Payment required to access this resource. Visit your billing
+      # tab." Cerebras' own pricing page now reads "$5 in free credits after making an
+      # account" rather than describing an indefinite no-cost rate-limited tier the way it
+      # did when this was first written — their model may have shifted to a capped free
+      # trial. Check cloud.cerebras.ai's billing tab: this may just need a card on file to
+      # unlock the credit, or the $5 may already be spent. If Cerebras has genuinely gone
+      # trial-only, this rung's place in the "genuinely free" waterfall needs revisiting.
 
+  # FIXED (6.15, live-tested): OpenRouter's own error on this exact slug: "This model is
+  # unavailable for free. The paid version is available now." The :free Llama 3.3 70B
+  # endpoint was retired. Swapped to nemotron-3.5-lightning:free — confirmed live via
+  # OpenRouter's own model API as currently real and $0. Smaller than the old Llama slug
+  # (3B active/30B total MoE), but working. Free-model slugs on OpenRouter churn — expect
+  # to re-verify this again eventually, not just once.
   - model_name: free-openrouter
     litellm_params:
-      model: openrouter/meta-llama/llama-3.3-70b-instruct:free
+      model: openrouter/nvidia/nemotron-3.5-lightning:free
       api_key: os.environ/OPENROUTER_API_KEY
-      # 20 RPM / 50 RPD with no credits purchased; 20 RPM / 1,000 RPD once $10+ in
-      # credits has been bought (per OpenRouter's own docs) — worth funding that $10
-      # once, it's a 20x jump in daily headroom for a one-time cost.
+      # Old RPM/RPD figures (20 RPM / 50 RPD no credits, 1,000 RPD with $10+ credits) were
+      # OpenRouter-account-wide, not model-specific, so likely still roughly apply — not
+      # re-verified against this specific model, worth a spot-check on your account.
       #
       # Privacy (checked directly, 6.13): OpenRouter doesn't log prompts/completions by
       # default and excludes logging/unconfirmed providers from routing unless you opt in
-      # (off by default) — but this specific free endpoint has 13 possible backend hosts
-      # (DeepInfra, Together, Novita, SambaNova, Groq, Google Vertex, etc.), so which one
-      # serves a request varies. Fine for routine stuff; still don't send finance/health/
+      # (off by default). Which backend host actually serves a :free request can still
+      # vary by model/provider — fine for routine stuff; still don't send finance/health/
       # vault content here. Full reasoning: docs/MODEL_ROUTING.md.
 
   # --- Replaces the old Experiential Labs free rung (dropped, 6.12): a stable, cheap,
@@ -96,7 +134,7 @@ model_list:
   # call `cheap`; the gateway decides underneath it how far to escalate before paying.
   - model_name: cheap
     litellm_params:
-      model: groq/llama-3.3-70b-versatile
+      model: groq/openai/gpt-oss-120b   # kept in sync with free-groq above (6.15) — same fix, same reason
       api_key: os.environ/GROQ_API_KEY
 
   # --- Renamed from the old `cheap` (6.12): this was Haiku pretending to be the free
@@ -167,6 +205,13 @@ general_settings:
   # SQLite doesn't support it. Commented out until that Postgres instance actually exists
   # (Phase 2) — uncomment once DATABASE_URL is set in .env. Until then, spend still gets
   # tracked locally (SQLite), just not budget-enforced.
+  #
+  # GOTCHA (hit during Week 1 testing): this line being commented out is NOT enough on its
+  # own. LiteLLM also reads the raw DATABASE_URL env var directly at startup, regardless of
+  # whether this config.yaml line is active — so a present-but-empty DATABASE_URL in .env
+  # (uncommented, no value) crashes the proxy with "unsupported scheme '<missing scheme>'"
+  # even with this line commented out. .env.example now keeps DATABASE_URL commented out
+  # too, not just blank — keep it that way until Phase 2's Postgres actually exists.
   # database_url: os.environ/DATABASE_URL
 
 # Token Optimiser + Cost/Usage HUD backend — master plan 6.9. Both entries below are

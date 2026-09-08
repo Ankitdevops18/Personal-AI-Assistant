@@ -36,6 +36,8 @@ litellm --config gateway/config.yaml
 
 Runs on `http://0.0.0.0:4000` by default. Leave this running in its own terminal tab — Hermes talks to it over HTTP.
 
+**Startup error: `DATABASE_URL uses unsupported scheme '<missing scheme>'`** — means `DATABASE_URL` is exported but empty. LiteLLM reads that env var directly at startup regardless of whether `general_settings.database_url` in `config.yaml` is commented out. Fix: `unset DATABASE_URL` in that shell, or make sure the line is commented out (`# DATABASE_URL=`) in your `.env` before running `export $(grep -v '^#' .env | xargs)` — `.env.example` ships it commented out for exactly this reason; don't uncomment it until the Phase 2 Postgres actually exists.
+
 ## Verify it works
 
 ```bash
@@ -59,10 +61,10 @@ If that comes back with a real response, the gateway half of Week 1 is done — 
 |---|---|---|---|
 | `frontier` | Claude Opus 4.1 (via AWS Bedrock) | $15/$75 per MTok | Trading Agent only (Phase 7) — highest stakes |
 | `premium` | Claude Sonnet 4.5 (via AWS Bedrock) | $3/$15 | JARVIS Core, Finance/Investment, Health, technical Learning |
-| `mid` | Nemotron 3 Super (via OpenRouter) | ~$0.085/$0.40 | Near-default middle tier — cheap enough to default to, capable enough to be a real fallback for `premium` |
-| `cheap` | Llama 3.3 70B (via Groq, free) | $0 | **Entry point** for the whole cost-minimization waterfall below — see fallback semantics |
+| `mid` | Nemotron 3.5 Lightning (via OpenRouter) | $0.08/$0.20 | Near-default middle tier — cheap enough to default to, capable enough to be a real fallback for `premium`. Swapped from the never-real "Nemotron 3 Super" slug, 6.15 |
+| `cheap` | GPT-OSS-120B (via Groq, free) | $0 | **Entry point** for the whole cost-minimization waterfall below — see fallback semantics. Swapped from Llama 3.3 70B (moved to Groq's Enterprise tier), 6.15 |
 | `cheap-reliable` | Claude Haiku 4.5 (via AWS Bedrock, 6.13) | $1/$5 | Renamed from the old `cheap` (6.12) — paid, reliable, now correctly positioned as `cheap`'s last-resort fallback, not its primary |
-| `free-groq` / `free-cerebras` / `free-openrouter` | Llama 3.3 70B / GPT-OSS-120B / Llama 3.3 70B (three free hosts) | $0 | News, English/personality practice, high-volume low-stakes work |
+| `free-groq` / `free-cerebras` / `free-openrouter` | GPT-OSS-120B / GPT-OSS-120B / Nemotron 3.5 Lightning (three free hosts) | $0 | News, English/personality practice, high-volume low-stakes work. Model slugs updated 6.15 — see `gateway/config.yaml` for why each one changed |
 | `bedrock-nova-micro` | Amazon Nova Micro (via AWS Bedrock) | $0.035/$0.14 | Replaces the old Experiential rung (6.12) — stable, no promotional-pricing-cliff risk |
 | `premium-fallback` | GPT-4o (direct OpenAI, deliberately not Bedrock — 6.13) | provider-dependent | Cross-provider reliability fallback for `premium`, and the one tier that survives an AWS-wide outage (needs `OPENAI_API_KEY`) |
 | `experimental` | OpenRouter catalog (Qwen, GLM, etc.) | varies | Manual-only, never automatic — see below |

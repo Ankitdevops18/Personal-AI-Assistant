@@ -15,6 +15,7 @@ automation/   n8n workflows and scheduling. Phase 2+.
 memory/       Postgres + pgvector schema (state + semantic memory). Phase 2+.
 hud/          JARVIS UI — minimal HUD folds into the daily brief (Phase 1); real dashboard Phase 6.
 docs/         Architecture snapshot, LLM Gateway contract, model routing, cost/token HUD, runbooks.
+experiments/  Spikes not yet wired into any agent — e.g. Magnitude browser automation (master plan 6.14).
 ```
 
 Folders beyond `gateway/` and `hermes/` are placeholders for now — each has a short README saying what will land there and when, so the shape of the system is visible from day one without pretending it's all built.
