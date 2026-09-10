@@ -29,7 +29,15 @@ model_list:
   # TROUBLESHOOTING (6.15) — "BedrockException Invalid Authentication: The security token
   # included in the request is invalid": AWS didn't recognize the credentials at all, not
   # a permissions/model-access problem (that error reads differently — AccessDeniedException).
-  # Checked in order:
+  # ACTUAL ROOT CAUSE, this time: AWS_SECRET_ACCESS_KEY was simply left blank in .env (only
+  # AWS_ACCESS_KEY_ID and AWS_REGION_NAME were filled in) — an easy thing to miss since
+  # `.env.example` ships that line empty for you to fill in. `aws sts get-caller-identity`
+  # can pass in the same terminal even when this is true, if the CLI is picking up a
+  # different credential source (a default profile in ~/.aws/credentials) than what's
+  # actually exported from .env — passing that command does NOT confirm .env is correct.
+  # First check, always: `env | grep AWS` in the exact shell about to run `litellm`, and
+  # confirm AWS_SECRET_ACCESS_KEY actually shows a value, not just the other two vars.
+  # Checked in order after that:
   #  1. Trailing whitespace/newline on AWS_ACCESS_KEY_ID / AWS_SECRET_ACCESS_KEY in .env —
   #     easy to introduce copy-pasting from the AWS console.
   #  2. If these are TEMPORARY credentials (from `aws sso login`, IAM Identity Center, or
@@ -41,14 +49,24 @@ model_list:
   #  4. Fastest isolation test if the AWS CLI is installed: export the same three (or
   #     four) vars in a shell and run `aws sts get-caller-identity` — if THAT fails the
   #     same way, it's the credentials, not LiteLLM or this config.
+  # TROUBLESHOOTING (6.16) — "BedrockException ... Invocation of model ID
+  # anthropic.claude-sonnet-4-5-... with on-demand throughput isn't supported. Retry your
+  # request with the ID or ARN of an inference profile that contains this model.": this
+  # model generation (Opus 4.1/Sonnet 4.5/Haiku 4.5) can't be invoked on-demand by the bare
+  # model ID on Bedrock — AWS requires routing through a cross-region inference profile,
+  # which is just the model ID prefixed with a region-group code (`us.`, `eu.`, `apac.`).
+  # The prefix must match the region GROUP of AWS_REGION_NAME, not be hardcoded — `us.` is
+  # correct for us-east-1 (the .env default) but wrong if that's ever switched to
+  # ap-south-1 (would need `apac.`). Verify the actual profile ID in the Bedrock console's
+  # "Cross-region inference" tab for whichever region ends up in AWS_REGION_NAME.
   - model_name: frontier          # Trading Agent only (Phase 7) — highest stakes, hardest reasoning
     litellm_params:
-      model: bedrock/anthropic.claude-opus-4-1-20250805-v1:0   # verify exact model ID in the Bedrock console — these differ slightly from direct-API strings and change often
+      model: bedrock/us.anthropic.claude-opus-4-1-20250805-v1:0   # verify exact model ID/inference-profile in the Bedrock console — these differ slightly from direct-API strings and change often
       aws_region_name: os.environ/AWS_REGION_NAME
 
   - model_name: premium            # JARVIS Core, Finance/Investment, Health, technical Learning
     litellm_params:
-      model: bedrock/anthropic.claude-sonnet-4-5-20250929-v1:0   # verify exact model ID in the Bedrock console
+      model: bedrock/us.anthropic.claude-sonnet-4-5-20250929-v1:0   # verify exact model ID/inference-profile in the Bedrock console
       aws_region_name: os.environ/AWS_REGION_NAME
 
   # --- Tier A/B: the "near-default middle" — cheap enough to default to, capable enough
@@ -147,7 +165,7 @@ model_list:
   # (ANTHROPIC_API_KEY is now unused anywhere in this config).
   - model_name: cheap-reliable
     litellm_params:
-      model: bedrock/anthropic.claude-haiku-4-5-20251001-v1:0   # verify exact model ID in the Bedrock console
+      model: bedrock/us.anthropic.claude-haiku-4-5-20251001-v1:0   # verify exact model ID/inference-profile in the Bedrock console — same on-demand restriction as frontier/premium above (see 6.16 note)
       aws_region_name: os.environ/AWS_REGION_NAME
 
   # --- second Anthropic-independent provider, so "model-agnostic" is proven day one ---
