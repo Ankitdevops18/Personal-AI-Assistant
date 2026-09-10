@@ -101,7 +101,7 @@ For the Claude 4.x generation, Bedrock requires a cross-region inference profile
 
 ## Custom skill
 
-`SKILL.md` defines a `git-commit-and-push` skill for when Ankit asks to commit and push. It stages everything (`git add -A`), writes a commit from the actual diff, and pushes to the current branch's remote. It does **not** hand-pick files and does **not** use `--amend`.
+`.claude/skills/git-commit-and-push/SKILL.md` defines a `git-commit-and-push` skill for when Ankit asks to commit and push. It stages everything (`git add -A`), writes a commit from the actual diff, and pushes to the current branch's remote. It does **not** hand-pick files and does **not** use `--amend`.
 
 ## Docs map
 
