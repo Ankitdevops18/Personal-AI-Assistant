@@ -33,7 +33,7 @@ Full detail: `gateway/README.md`.
 curl http://localhost:4000/v1/chat/completions \
   -H "Authorization: Bearer $LITELLM_MASTER_KEY" \
   -H "Content-Type: application/json" \
-  -d '{"model": "cheap", "messages": [{"role": "user", "content": "reply with exactly: gateway is alive"}]}'
+  -d '{"model": "premium", "messages": [{"role": "user", "content": "reply with exactly: gateway is alive"}]}'
 ```
 
 Checkpoint: you get a real response back. If not, stop here and debug the gateway before touching Hermes — no point layering Hermes on top of a broken foundation.
