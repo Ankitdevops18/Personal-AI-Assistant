@@ -20,4 +20,5 @@ node_modules/
 
 # Logs / local runtime state
 *.log
+*.pid
 .hermes-local/

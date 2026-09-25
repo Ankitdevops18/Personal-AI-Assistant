@@ -99,9 +99,12 @@ For the Claude 4.x generation, Bedrock requires a cross-region inference profile
 - **Spend tracking:** available at `/spend/logs` once `DATABASE_URL` is set (Phase 2)
 - **Budget cap:** $30/30d set in `litellm_settings` — enforced only once Postgres is wired
 
-## Custom skill
+## Custom skills
 
-`.claude/skills/push/SKILL.md` defines a `push` skill for when Ankit asks to commit and push. It stages everything (`git add -A`), writes a commit from the actual diff, and pushes to the current branch's remote. It does **not** hand-pick files and does **not** use `--amend`.
+- `.claude/skills/push/SKILL.md` defines a `push` skill for when Ankit asks to commit and push. It stages everything (`git add -A`), writes a commit from the actual diff, and pushes to the current branch's remote. It does **not** hand-pick files and does **not** use `--amend`.
+- `.claude/skills/litellm/SKILL.md` defines a `litellm` skill for starting/stopping the gateway and checking its logs. It launches `litellm --config gateway/config.yaml` detached (`nohup ... &`), logging to `gateway/litellm.log` and tracking the process in `gateway/litellm.pid` so it survives past the calling session and can be stopped later just by asking.
+
+Both are duplicated at `.agents/skills/<name>/SKILL.md` for Codex CLI.
 
 ## Docs map
 
