@@ -101,7 +101,7 @@ For the Codex 4.x generation, Bedrock requires a cross-region inference profile 
 
 ## Custom skill
 
-`.Codex/skills/git-commit-and-push/SKILL.md` defines a `git-commit-and-push` skill for when Ankit asks to commit and push. It stages everything (`git add -A`), writes a commit from the actual diff, and pushes to the current branch's remote. It does **not** hand-pick files and does **not** use `--amend`.
+`.agents/skills/push/SKILL.md` defines a `push` skill for when Ankit asks to commit and push. It stages everything (`git add -A`), writes a commit from the actual diff, and pushes to the current branch's remote. It does **not** hand-pick files and does **not** use `--amend`.
 
 ## Docs map
 

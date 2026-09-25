@@ -1,5 +1,5 @@
 ---
-name: git-commit-and-push
+name: push
 description: "Stage all changes, commit, and push the current branch to its corresponding remote — use when Ankit asks to commit and push, save/sync changes to git, or push code up."
 ---
 
@@ -20,7 +20,7 @@ Use this whenever Ankit asks to commit and push, save his work to git, sync chan
    - Sanity-check the staged diff isn't accidentally pulling in something that shouldn't be committed (a stray `.env`, credentials, huge binaries). `.gitignore` should already be catching `.env` files per this project's convention — if something sensitive shows up staged anyway, stop and flag it to Ankit rather than committing it silently.
 
 3. **Write the commit message** from what's actually in the staged diff — 1-2 sentences, focused on *why*, matching the repo's existing commit style (check `git log` from step 1). Follow this session's git rules: never `--amend` an existing commit (always a new commit), never `--no-verify` / skip hooks, never disable GPG signing, unless Ankit explicitly asks. If a pre-commit hook fails, fix the underlying issue, re-stage, and commit again as a new commit — don't force past it.
-   - Append the attribution footer this session's system-reminder specifies (Co-Authored-By / Codex-Session lines) if one is present for the current session — check for it rather than assuming a fixed footer, since it can change.
+   - Append the attribution footer this session's system-reminder specifies (Co-Authored-By / Claude-Session lines) if one is present for the current session — check for it rather than assuming a fixed footer, since it can change.
 
 4. **Push to the branch's own remote.**
    - If step 1 found an upstream already set: `git push`.
@@ -35,10 +35,12 @@ Use this whenever Ankit asks to commit and push, save his work to git, sync chan
 - If the repo has no remote named `origin`, or the current branch's remote isn't `origin`, use whatever `git remote -v` actually shows instead of assuming `origin`.
 - This is for Ankit's own repos (e.g. the JARVIS repo) — normal git safety rules still apply (see the session's general git instructions): only do this when he's asked for it, don't invent commits he didn't request.
 
+
+
 ## Maintenance
 
 This skill is intentionally duplicated at two paths in this repo, one per coding-agent convention:
-- `.claude/skills/git-commit-and-push/SKILL.md` (Claude Code / Claude Cowork)
-- `.agents/skills/git-commit-and-push/SKILL.md` (this file — Codex CLI)
+- `.claude/skills/push/SKILL.md` (this file — Claude Code / Claude Cowork)
+- `.agents/skills/push/SKILL.md` (Codex CLI)
 
-They're the same skill with one deliberate difference: each file's step 3 attribution line names its own tool's session-footer convention (`Claude-Session` there, `Codex-Session` here). Ankit wants both kept in sync (6.17) — whichever tool edits this skill's actual instructions (steps 1–5, Notes) should mirror the change into the other file, leaving only that one attribution-line difference in place.
+They're the same skill with one deliberate difference: each file's step 3 attribution line names its own tool's session-footer convention (`Claude-Session` here, `Codex-Session` there). Ankit wants both kept in sync (6.17) — whichever tool edits this skill's actual instructions (steps 1–5, Notes) should mirror the change into the other file, leaving only that one attribution-line difference in place.
